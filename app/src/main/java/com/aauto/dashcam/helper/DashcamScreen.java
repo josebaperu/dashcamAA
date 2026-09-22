@@ -2,7 +2,6 @@ package com.aauto.dashcam.helper;
 
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 
 import androidx.annotation.NonNull;
 import androidx.car.app.CarContext;
@@ -24,11 +23,10 @@ import com.aauto.dashcam.api.IDashcamControl;
 
 public class DashcamScreen extends Screen implements DashcamClient.Listener {
     /**
-     * Android Auto hosts throttle template refreshes (often ~10s). Invalidating
-     * every second keeps that window from ever opening, so the first REC 00:00
-     * stays on screen. Wait at least this long between duration-only redraws.
+     * Car clock steps in 10s marks (00:00, 00:10, 00:20). That spacing matches
+     * typical head-unit refresh throttling; 5s steps are close enough to starve it.
      */
-    private static final long DURATION_INVALIDATE_MS = 11_000L;
+    private static final long CLOCK_STEP_MS = 10_000L;
 
     private final DashcamClient client;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -52,7 +50,6 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     private boolean renderedFront;
     private boolean renderedConnected;
     private long renderedDurationBucket = Long.MIN_VALUE;
-    private long lastDurationInvalidateElapsed;
 
     public DashcamScreen(@NonNull CarContext carContext, DashcamClient client) {
         super(carContext);
@@ -149,14 +146,12 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private void refreshIfVisibleChanged() {
-        long now = SystemClock.elapsedRealtime();
-        long bucket = durationMs / 1000L;
+        long bucket = displayDurationMs() / CLOCK_STEP_MS;
         boolean stateChanged = connected != renderedConnected
                 || state != renderedState
                 || loopEnabled != renderedLoop
                 || frontCamera != renderedFront;
-        boolean durationDue = bucket != renderedDurationBucket
-                && (now - lastDurationInvalidateElapsed) >= DURATION_INVALIDATE_MS;
+        boolean durationDue = bucket != renderedDurationBucket;
         if (!stateChanged && !durationDue) {
             return;
         }
@@ -165,8 +160,12 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         renderedLoop = loopEnabled;
         renderedFront = frontCamera;
         renderedDurationBucket = bucket;
-        lastDurationInvalidateElapsed = now;
         invalidate();
+    }
+
+    private long displayDurationMs() {
+        long ms = Math.max(0L, durationMs);
+        return (ms / CLOCK_STEP_MS) * CLOCK_STEP_MS;
     }
 
     /**
@@ -178,7 +177,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private String clockLabel() {
-        String clock = formatDuration(durationMs);
+        String clock = formatDuration(displayDurationMs());
         return switch (state) {
             case IDashcamControl.STATE_RECORDING -> "REC " + clock;
             case IDashcamControl.STATE_PAUSED -> "PAUSED " + clock;
@@ -187,9 +186,10 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private String playSubtitle() {
+        String clock = formatDuration(displayDurationMs());
         return switch (state) {
-            case IDashcamControl.STATE_RECORDING -> "REC " + formatDuration(durationMs);
-            case IDashcamControl.STATE_PAUSED -> "resume " + formatDuration(durationMs);
+            case IDashcamControl.STATE_RECORDING -> "REC " + clock;
+            case IDashcamControl.STATE_PAUSED -> "resume " + clock;
             default -> "start";
         };
     }
