@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dashcam AA</string>
+    <string name="play">Record</string>
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="stop">Stop</string>
+    <string name="loop">Loop</string>
+    <string name="camera">Camera</string>
+    <string name="camera_rear">Rear camera</string>
+    <string name="camera_front">Front camera</string>
+    <string name="status">Status</string>
+    <string name="disconnected">Dashcam is not connected. Open the Dashcam app on the phone first.</string>
+    <string name="retry">Retry</string>
+    <string name="connected">Connected</string>
+    <string name="car_title">Dashcam</string>
+</resources>
