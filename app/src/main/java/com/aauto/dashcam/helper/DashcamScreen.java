@@ -1,8 +1,5 @@
 package com.aauto.dashcam.helper;
 
-import android.text.SpannableString;
-import android.text.Spanned;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.car.app.CarContext;
@@ -11,7 +8,6 @@ import androidx.car.app.model.Action;
 import androidx.car.app.model.ActionStrip;
 import androidx.car.app.model.CarColor;
 import androidx.car.app.model.CarIcon;
-import androidx.car.app.model.ForegroundCarColorSpan;
 import androidx.car.app.model.GridItem;
 import androidx.car.app.model.GridTemplate;
 import androidx.car.app.model.ItemList;
@@ -28,11 +24,6 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
      * typical head-unit refresh throttling; 5s steps are close enough to starve it.
      */
     private static final long CLOCK_STEP_MS = 10_000L;
-    /**
-     * Same title connected or not: GridTemplate counts a grid item title change
-     * as a new step against the host's 5-template quota, not a refresh.
-     */
-    private static final String STATUS_TITLE = "\u00A0";
     private static final CarColor COLOR_ACTIVE = CarColor.RED;
     private static final CarColor COLOR_DISABLED =
             CarColor.createCustom(0xFF9AA3B2, 0xFF9AA3B2);
@@ -138,7 +129,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
 
     /**
      * GridTemplate treats a title change as a new screen, so keep "Dashcam"
-     * and put REC / paused / idle in the Play subtitle instead.
+     * and put REC / paused / idle in the clock label instead.
      */
     private String headerTitle() {
         return getCarContext().getString(R.string.car_title);
@@ -154,15 +145,6 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
             case IDashcamControl.STATE_WAITING_FOR_CAMERA -> "WAIT " + clock;
             case IDashcamControl.STATE_PAUSED -> "PAUSED " + clock;
             default -> clock;
-        };
-    }
-
-    private String playSubtitle() {
-        return switch (state) {
-            case IDashcamControl.STATE_RECORDING -> "REC";
-            case IDashcamControl.STATE_WAITING_FOR_CAMERA -> "wait";
-            case IDashcamControl.STATE_PAUSED -> "resume";
-            default -> "start";
         };
     }
 
@@ -197,7 +179,6 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         }
         return transportItem(
                 getCarContext().getString(R.string.play),
-                playSubtitle(),
                 playIcon(),
                 enabled,
                 color,
@@ -216,7 +197,6 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         }
         return transportItem(
                 getCarContext().getString(R.string.pause),
-                "hold",
                 R.drawable.ic_pause,
                 enabled,
                 color,
@@ -235,7 +215,6 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         }
         return transportItem(
                 getCarContext().getString(R.string.stop),
-                "save",
                 R.drawable.ic_stop,
                 enabled,
                 color,
@@ -247,8 +226,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         boolean enabled = connected && idle();
         return transportItem(
                 getCarContext().getString(R.string.loop),
-                loopEnabled ? "ON" : "OFF",
-                R.drawable.ic_loop,
+                loopEnabled ? R.drawable.ic_loop : R.drawable.ic_loop_off,
                 enabled,
                 enabled ? null : COLOR_DISABLED,
                 client::toggleLoop);
@@ -259,16 +237,19 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         boolean enabled = connected && state != IDashcamControl.STATE_PAUSED;
         return transportItem(
                 getCarContext().getString(R.string.camera),
-                frontCamera ? "FRONT" : "REAR",
-                R.drawable.ic_camera,
+                frontCamera ? R.drawable.ic_camera_front : R.drawable.ic_camera_rear,
                 enabled,
                 enabled ? null : COLOR_DISABLED,
                 client::toggleCamera);
     }
 
+    /**
+     * Title and icon only: a second text line makes two rows of six cells taller than
+     * the head unit's screen, so the grid scrolls. State shows through icon shape and tint;
+     * titles stay fixed because a title change counts against the template quota.
+     */
     private GridItem transportItem(
             String title,
-            String text,
             int iconRes,
             boolean enabled,
             @Nullable CarColor color,
@@ -278,19 +259,8 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         if (color != null) {
             icon.setTint(color);
         }
-        CharSequence labeled = text;
-        if (color != null) {
-            SpannableString span = new SpannableString(text);
-            span.setSpan(
-                    ForegroundCarColorSpan.create(color),
-                    0,
-                    text.length(),
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            labeled = span;
-        }
         GridItem.Builder item = new GridItem.Builder()
                 .setTitle(title)
-                .setText(labeled)
                 .setImage(icon.build(), GridItem.IMAGE_TYPE_ICON);
         if (enabled) {
             item.setOnClickListener(action::run);
@@ -303,33 +273,28 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
                 IconCompat.createWithResource(getCarContext(), iconRes)).build();
     }
 
-    /** Same situations as the phone screen's connection line: red when recording can't work. */
+    /**
+     * Same situations as the phone screen's connection line: red when recording can't work.
+     * The icon names the reason, since the title has to stay "Status" (see transportItem).
+     */
     private GridItem statusItem() {
-        int labelRes;
+        int iconRes;
         if (!connected) {
-            labelRes = R.string.status_not_connected;
+            iconRes = R.drawable.ic_status_disconnected;
         } else if (state == IDashcamControl.STATE_NO_CAMERA) {
-            labelRes = R.string.status_camera_off;
+            iconRes = R.drawable.ic_status_camera_off;
         } else if (state == IDashcamControl.STATE_WAITING_FOR_CAMERA) {
-            labelRes = R.string.waiting_camera;
+            iconRes = R.drawable.ic_status_waiting;
         } else {
-            labelRes = R.string.status_all_good;
+            iconRes = R.drawable.ic_status_ok;
         }
-        CarColor color = labelRes == R.string.status_all_good ? CarColor.GREEN : COLOR_ACTIVE;
-        String label = getCarContext().getString(labelRes);
-        SpannableString text = new SpannableString(label);
-        text.setSpan(
-                ForegroundCarColorSpan.create(color),
-                0,
-                label.length(),
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        CarColor color = iconRes == R.drawable.ic_status_ok ? CarColor.GREEN : COLOR_ACTIVE;
         CarIcon icon = new CarIcon.Builder(
-                IconCompat.createWithResource(getCarContext(), R.drawable.ic_status))
+                IconCompat.createWithResource(getCarContext(), iconRes))
                 .setTint(color)
                 .build();
         GridItem.Builder item = new GridItem.Builder()
-                .setTitle(STATUS_TITLE)
-                .setText(text)
+                .setTitle(getCarContext().getString(R.string.status))
                 .setImage(icon, GridItem.IMAGE_TYPE_ICON);
         // Only a lost link can be retried from the car; the camera states need the phone.
         if (!connected) {
