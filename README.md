@@ -24,4 +24,4 @@ cd /home/super/dev/Aauto/dashcam_aa_helper
 3. Developer settings: unknown sources / third-party apps, depending on the head unit.
 4. Launch **Dashcam AA**. Grid buttons send the same commands as the phone UI.
 
-The car can't start the camera by itself: Android doesn't let a background app open a camera service. If the status tile says **Open Dashcam**, open the Dashcam app on the phone and the car controls come back. **Waiting for camera** means recording is on but no frames are arriving (for example, another app is using the camera); the clock pauses until they resume.
+The car can't start the camera by itself: Android doesn't let a background app open a camera service. If the bottom-right status tile says **Camera off**, open the Dashcam app on the phone and the car controls come back. **Waiting for camera** means recording is on but no frames are arriving (for example, another app is using the camera); the clock pauses until they resume.

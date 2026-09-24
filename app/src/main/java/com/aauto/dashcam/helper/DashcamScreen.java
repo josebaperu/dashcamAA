@@ -42,19 +42,17 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     private boolean loopEnabled;
     private boolean frontCamera;
     private long durationMs;
-    private String message = "";
     private boolean connected;
     private int renderedState = Integer.MIN_VALUE;
     private boolean renderedLoop;
     private boolean renderedFront;
     private boolean renderedConnected;
-    private String renderedMessage = "";
     private long renderedDurationBucket = Long.MIN_VALUE;
 
     public DashcamScreen(@NonNull CarContext carContext, DashcamClient client) {
         super(carContext);
         this.client = client;
-        // No polling: Dashcam pushes every state/message change and each second of duration.
+        // No polling: Dashcam pushes every state change and each second of duration.
         this.client.addListener(this);
         getLifecycle().addObserver(new DefaultLifecycleObserver() {
             @Override
@@ -102,7 +100,6 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
             // Last-known state is stale once the link drops; never keep showing REC.
             state = IDashcamControl.STATE_IDLE;
             durationMs = 0L;
-            message = "";
         }
         refreshIfVisibleChanged();
     }
@@ -112,7 +109,6 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         this.state = state;
         this.loopEnabled = loopEnabled;
         this.durationMs = durationMs;
-        this.message = message == null ? "" : message;
         this.frontCamera = frontCamera;
         refreshIfVisibleChanged();
     }
@@ -122,8 +118,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         boolean stateChanged = connected != renderedConnected
                 || state != renderedState
                 || loopEnabled != renderedLoop
-                || frontCamera != renderedFront
-                || !message.equals(renderedMessage);
+                || frontCamera != renderedFront;
         boolean durationDue = bucket != renderedDurationBucket;
         if (!stateChanged && !durationDue) {
             return;
@@ -132,7 +127,6 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         renderedState = state;
         renderedLoop = loopEnabled;
         renderedFront = frontCamera;
-        renderedMessage = message;
         renderedDurationBucket = bucket;
         invalidate();
     }
@@ -309,53 +303,39 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
                 IconCompat.createWithResource(getCarContext(), iconRes)).build();
     }
 
+    /** Same situations as the phone screen's connection line: red when recording can't work. */
     private GridItem statusItem() {
-        String label = alertText();
-        if (label == null) {
-            // Nothing wrong. When idle, show why Dashcam stopped ("Stopped", "Storage full"...).
-            String text = state == IDashcamControl.STATE_IDLE && !message.isEmpty()
-                    ? message
-                    : "\u00A0";
-            return new GridItem.Builder()
-                    .setTitle(STATUS_TITLE)
-                    .setText(text)
-                    .setImage(carIcon(R.drawable.ic_blank), GridItem.IMAGE_TYPE_ICON)
-                    .build();
+        int labelRes;
+        if (!connected) {
+            labelRes = R.string.status_not_connected;
+        } else if (state == IDashcamControl.STATE_NO_CAMERA) {
+            labelRes = R.string.status_camera_off;
+        } else if (state == IDashcamControl.STATE_WAITING_FOR_CAMERA) {
+            labelRes = R.string.waiting_camera;
+        } else {
+            labelRes = R.string.status_all_good;
         }
-        SpannableString red = new SpannableString(label);
-        red.setSpan(
-                ForegroundCarColorSpan.create(COLOR_ACTIVE),
+        CarColor color = labelRes == R.string.status_all_good ? CarColor.GREEN : COLOR_ACTIVE;
+        String label = getCarContext().getString(labelRes);
+        SpannableString text = new SpannableString(label);
+        text.setSpan(
+                ForegroundCarColorSpan.create(color),
                 0,
                 label.length(),
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         CarIcon icon = new CarIcon.Builder(
                 IconCompat.createWithResource(getCarContext(), R.drawable.ic_status))
-                .setTint(COLOR_ACTIVE)
+                .setTint(color)
                 .build();
         GridItem.Builder item = new GridItem.Builder()
                 .setTitle(STATUS_TITLE)
-                .setText(red)
+                .setText(text)
                 .setImage(icon, GridItem.IMAGE_TYPE_ICON);
         // Only a lost link can be retried from the car; the camera states need the phone.
         if (!connected) {
             item.setOnClickListener(client::rebind);
         }
         return item.build();
-    }
-
-    /** Red status text when recording can't work right now, or null when all is well. */
-    @Nullable
-    private String alertText() {
-        if (!connected) {
-            return getCarContext().getString(R.string.not_ready);
-        }
-        if (state == IDashcamControl.STATE_NO_CAMERA) {
-            return getCarContext().getString(R.string.open_dashcam);
-        }
-        if (state == IDashcamControl.STATE_WAITING_FOR_CAMERA) {
-            return getCarContext().getString(R.string.waiting_camera);
-        }
-        return null;
     }
 
     static String formatDuration(long durationMs) {

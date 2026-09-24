@@ -14,7 +14,9 @@
     <string name="retry">Retry</string>
     <string name="connected">Connected</string>
     <string name="car_title">Dashcam</string>
-    <string name="not_ready">Not Ready</string>
+    <string name="status_not_connected">Not connected</string>
+    <string name="status_camera_off">Camera off</string>
+    <string name="status_all_good">All good</string>
     <string name="open_dashcam">Open Dashcam</string>
     <string name="waiting_camera">Waiting for camera</string>
     <string name="timer_zero">00:00</string>
