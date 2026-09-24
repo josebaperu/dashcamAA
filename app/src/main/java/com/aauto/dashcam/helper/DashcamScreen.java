@@ -2,18 +2,21 @@ package com.aauto.dashcam.helper;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.text.SpannableString;
+import android.text.Spanned;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.car.app.CarContext;
-import androidx.car.app.CarToast;
 import androidx.car.app.Screen;
 import androidx.car.app.model.Action;
 import androidx.car.app.model.ActionStrip;
+import androidx.car.app.model.CarColor;
 import androidx.car.app.model.CarIcon;
+import androidx.car.app.model.ForegroundCarColorSpan;
 import androidx.car.app.model.GridItem;
 import androidx.car.app.model.GridTemplate;
 import androidx.car.app.model.ItemList;
-import androidx.car.app.model.MessageTemplate;
 import androidx.car.app.model.Template;
 import androidx.core.graphics.drawable.IconCompat;
 import androidx.lifecycle.DefaultLifecycleObserver;
@@ -27,6 +30,9 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
      * typical head-unit refresh throttling; 5s steps are close enough to starve it.
      */
     private static final long CLOCK_STEP_MS = 10_000L;
+    private static final CarColor COLOR_ACTIVE = CarColor.RED;
+    private static final CarColor COLOR_DISABLED =
+            CarColor.createCustom(0xFF9AA3B2, 0xFF9AA3B2);
 
     private final DashcamClient client;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -71,39 +77,10 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     @NonNull
     @Override
     public Template onGetTemplate() {
-        if (!connected) {
-            return new MessageTemplate.Builder(getCarContext().getString(R.string.disconnected))
-                    .setTitle(getCarContext().getString(R.string.car_title))
-                    .setHeaderAction(Action.APP_ICON)
-                    .addAction(new Action.Builder()
-                            .setTitle(getCarContext().getString(R.string.retry))
-                            .setOnClickListener(() -> {
-                                client.bind();
-                                CarToast.makeText(
-                                        getCarContext(),
-                                        getCarContext().getString(R.string.retry),
-                                        CarToast.LENGTH_SHORT).show();
-                            })
-                            .build())
-                    .build();
-        }
-
         ItemList.Builder items = new ItemList.Builder();
-        items.addItem(gridItem(
-                getCarContext().getString(R.string.play),
-                playSubtitle(),
-                playIcon(),
-                client::play));
-        items.addItem(gridItem(
-                getCarContext().getString(R.string.pause),
-                "hold",
-                R.drawable.ic_pause,
-                client::pause));
-        items.addItem(gridItem(
-                getCarContext().getString(R.string.stop),
-                "save",
-                R.drawable.ic_stop,
-                client::stop));
+        items.addItem(recordItem());
+        items.addItem(pauseItem());
+        items.addItem(stopItem());
         items.addItem(gridItem(
                 getCarContext().getString(R.string.loop),
                 loopEnabled ? "ON" : "OFF",
@@ -114,6 +91,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
                 frontCamera ? "FRONT" : "REAR",
                 R.drawable.ic_camera,
                 client::toggleCamera));
+        items.addItem(statusItem());
 
         return new GridTemplate.Builder()
                 .setTitle(headerTitle())
@@ -186,10 +164,9 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private String playSubtitle() {
-        String clock = formatDuration(displayDurationMs());
         return switch (state) {
-            case IDashcamControl.STATE_RECORDING -> "REC " + clock;
-            case IDashcamControl.STATE_PAUSED -> "resume " + clock;
+            case IDashcamControl.STATE_RECORDING -> "REC";
+            case IDashcamControl.STATE_PAUSED -> "resume";
             default -> "start";
         };
     }
@@ -198,9 +175,127 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         return state == IDashcamControl.STATE_PAUSED ? R.drawable.ic_resume : R.drawable.ic_play;
     }
 
+    private GridItem recordItem() {
+        boolean enabled = connected && state != IDashcamControl.STATE_RECORDING;
+        CarColor color;
+        if (!connected) {
+            color = COLOR_DISABLED;
+        } else if (state == IDashcamControl.STATE_RECORDING) {
+            color = COLOR_ACTIVE;
+        } else if (state == IDashcamControl.STATE_PAUSED) {
+            color = COLOR_DISABLED;
+        } else {
+            color = null;
+        }
+        return transportItem(
+                getCarContext().getString(R.string.play),
+                playSubtitle(),
+                playIcon(),
+                enabled,
+                color,
+                client::play);
+    }
+
+    private GridItem pauseItem() {
+        boolean enabled = connected && state != IDashcamControl.STATE_PAUSED;
+        CarColor color;
+        if (!connected) {
+            color = COLOR_DISABLED;
+        } else if (state == IDashcamControl.STATE_PAUSED) {
+            color = COLOR_ACTIVE;
+        } else {
+            color = null;
+        }
+        return transportItem(
+                getCarContext().getString(R.string.pause),
+                "hold",
+                R.drawable.ic_pause,
+                enabled,
+                color,
+                client::pause);
+    }
+
+    private GridItem stopItem() {
+        boolean enabled = connected && state != IDashcamControl.STATE_IDLE;
+        CarColor color;
+        if (!connected) {
+            color = COLOR_DISABLED;
+        } else if (state == IDashcamControl.STATE_IDLE) {
+            color = COLOR_ACTIVE;
+        } else {
+            color = null;
+        }
+        return transportItem(
+                getCarContext().getString(R.string.stop),
+                "save",
+                R.drawable.ic_stop,
+                enabled,
+                color,
+                client::stop);
+    }
+
+    private GridItem transportItem(
+            String title,
+            String text,
+            int iconRes,
+            boolean enabled,
+            @Nullable CarColor color,
+            Runnable action) {
+        CarIcon.Builder icon = new CarIcon.Builder(
+                IconCompat.createWithResource(getCarContext(), iconRes));
+        if (color != null) {
+            icon.setTint(color);
+        }
+        CharSequence labeled = text;
+        if (color != null) {
+            SpannableString span = new SpannableString(text);
+            span.setSpan(
+                    ForegroundCarColorSpan.create(color),
+                    0,
+                    text.length(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            labeled = span;
+        }
+        GridItem.Builder item = new GridItem.Builder()
+                .setTitle(title)
+                .setText(labeled)
+                .setImage(icon.build(), GridItem.IMAGE_TYPE_ICON);
+        if (enabled) {
+            item.setOnClickListener(action::run);
+        }
+        return item.build();
+    }
+
     private CarIcon carIcon(int iconRes) {
         return new CarIcon.Builder(
                 IconCompat.createWithResource(getCarContext(), iconRes)).build();
+    }
+
+    private GridItem statusItem() {
+        if (connected) {
+            return new GridItem.Builder()
+                    .setTitle("\u00A0")
+                    .setText("\u00A0")
+                    .setImage(carIcon(R.drawable.ic_blank), GridItem.IMAGE_TYPE_ICON)
+                    .build();
+        }
+        String label = getCarContext().getString(R.string.not_ready);
+        SpannableString red = new SpannableString(label);
+        red.setSpan(
+                ForegroundCarColorSpan.create(COLOR_ACTIVE),
+                0,
+                label.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        CarIcon icon = new CarIcon.Builder(
+                IconCompat.createWithResource(getCarContext(), R.drawable.ic_status))
+                .setTint(COLOR_ACTIVE)
+                .build();
+        return new GridItem.Builder()
+                .setTitle(label)
+                .setText(red)
+                .setImage(icon, GridItem.IMAGE_TYPE_ICON)
+                .setOnClickListener(client::rebind)
+                .build();
     }
 
     private GridItem gridItem(String title, String text, int iconRes, Runnable action) {

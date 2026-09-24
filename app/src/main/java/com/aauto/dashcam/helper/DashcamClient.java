@@ -84,6 +84,11 @@ public final class DashcamClient {
         return control != null;
     }
 
+    public void rebind() {
+        unbind();
+        bind();
+    }
+
     public void bind() {
         if (bound) {
             return;
