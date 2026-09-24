@@ -103,7 +103,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        app:layout_constraintBottom_toTopOf="@id/btnLoop"
+        app:layout_constraintBottom_toTopOf="@id/toggles"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="@id/split"
         app:layout_constraintTop_toBottomOf="@id/controls">

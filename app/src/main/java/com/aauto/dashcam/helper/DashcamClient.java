@@ -40,6 +40,10 @@ public final class DashcamClient {
         @Override
         public void onStatusChanged(int state, boolean loopEnabled, long durationMs, String message, boolean frontCamera) {
             main.post(() -> {
+                if (control == null) {
+                    // Queued before the link dropped; don't resurrect stale state.
+                    return;
+                }
                 for (Listener listener : listeners) {
                     listener.onStatus(state, loopEnabled, durationMs, message, frontCamera);
                 }
@@ -64,6 +68,12 @@ public final class DashcamClient {
         public void onServiceDisconnected(ComponentName name) {
             control = null;
             notifyConnection(false);
+        }
+
+        @Override
+        public void onBindingDied(ComponentName name) {
+            // Dashcam was updated or force-stopped; this binding never reconnects on its own.
+            rebind();
         }
     };
 
@@ -97,6 +107,11 @@ public final class DashcamClient {
         intent.setPackage(DASHCAM_PACKAGE);
         bound = app.bindService(intent, connection, Context.BIND_AUTO_CREATE);
         if (!bound) {
+            // bindService keeps the connection registered even when it returns false.
+            try {
+                app.unbindService(connection);
+            } catch (IllegalArgumentException ignored) {
+            }
             notifyConnection(false);
         }
     }

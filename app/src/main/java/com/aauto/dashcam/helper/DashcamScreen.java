@@ -30,6 +30,11 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
      * typical head-unit refresh throttling; 5s steps are close enough to starve it.
      */
     private static final long CLOCK_STEP_MS = 10_000L;
+    /**
+     * Same title connected or not: GridTemplate counts a grid item title change
+     * as a new step against the host's 5-template quota, not a refresh.
+     */
+    private static final String STATUS_TITLE = " ";
     private static final CarColor COLOR_ACTIVE = CarColor.RED;
     private static final CarColor COLOR_DISABLED =
             CarColor.createCustom(0xFF9AA3B2, 0xFF9AA3B2);
@@ -110,6 +115,12 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     @Override
     public void onConnectionChanged(boolean connected) {
         this.connected = connected;
+        if (!connected) {
+            // Last-known state is stale once the link drops; never keep showing REC.
+            state = IDashcamControl.STATE_IDLE;
+            durationMs = 0L;
+            message = "";
+        }
         refreshIfVisibleChanged();
     }
 
@@ -155,6 +166,9 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private String clockLabel() {
+        if (!connected) {
+            return "--:--";
+        }
         String clock = formatDuration(displayDurationMs());
         return switch (state) {
             case IDashcamControl.STATE_RECORDING -> "REC " + clock;
@@ -272,7 +286,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     private GridItem statusItem() {
         if (connected) {
             return new GridItem.Builder()
-                    .setTitle("\u00A0")
+                    .setTitle(STATUS_TITLE)
                     .setText("\u00A0")
                     .setImage(carIcon(R.drawable.ic_blank), GridItem.IMAGE_TYPE_ICON)
                     .build();
@@ -289,7 +303,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
                 .setTint(COLOR_ACTIVE)
                 .build();
         return new GridItem.Builder()
-                .setTitle(label)
+                .setTitle(STATUS_TITLE)
                 .setText(red)
                 .setImage(icon, GridItem.IMAGE_TYPE_ICON)
                 .setOnClickListener(client::rebind)
@@ -297,13 +311,13 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private GridItem gridItem(String title, String text, int iconRes, Runnable action) {
-        CarIcon icon = carIcon(iconRes);
-        return new GridItem.Builder()
-                .setTitle(title)
-                .setText(text)
-                .setImage(icon, GridItem.IMAGE_TYPE_ICON)
-                .setOnClickListener(action::run)
-                .build();
+        return transportItem(
+                title,
+                text,
+                iconRes,
+                connected,
+                connected ? null : COLOR_DISABLED,
+                action);
     }
 
     static String formatDuration(long durationMs) {

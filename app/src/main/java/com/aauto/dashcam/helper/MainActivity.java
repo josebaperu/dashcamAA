@@ -103,6 +103,12 @@ public class MainActivity extends AppCompatActivity implements DashcamClient.Lis
         setControlsEnabled(connected);
         btnRetry.setEnabled(!connected);
         btnRetry.setText(connected ? R.string.connected : R.string.retry);
+        if (!connected) {
+            // Last-known state is stale once the link drops; never keep showing Recording.
+            status.setText(R.string.status);
+            timer.setText("--:--");
+            btnPlay.setText(R.string.play);
+        }
     }
 
     @Override
