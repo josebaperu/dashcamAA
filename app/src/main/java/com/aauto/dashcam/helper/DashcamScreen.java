@@ -182,8 +182,6 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
             color = COLOR_DISABLED;
         } else if (state == IDashcamControl.STATE_RECORDING) {
             color = COLOR_ACTIVE;
-        } else if (state == IDashcamControl.STATE_PAUSED) {
-            color = COLOR_DISABLED;
         } else {
             color = null;
         }
@@ -197,7 +195,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private GridItem pauseItem() {
-        boolean enabled = connected && state != IDashcamControl.STATE_PAUSED;
+        boolean enabled = connected && state == IDashcamControl.STATE_RECORDING;
         CarColor color;
         if (!connected) {
             color = COLOR_DISABLED;
