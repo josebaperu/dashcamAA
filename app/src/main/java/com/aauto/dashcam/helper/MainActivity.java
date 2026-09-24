@@ -1,5 +1,6 @@
 package com.aauto.dashcam.helper;
 
+import android.content.Intent;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.util.TypedValue;
@@ -26,6 +27,8 @@ public class MainActivity extends AppCompatActivity implements DashcamClient.Lis
     private MaterialButton btnLoop;
     private MaterialButton btnCamera;
     private MaterialButton btnRetry;
+    /** Linked, but Dashcam has no camera: the bottom button opens Dashcam instead of retrying. */
+    private boolean cameraOff;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,9 +53,36 @@ public class MainActivity extends AppCompatActivity implements DashcamClient.Lis
         btnCamera.setTextColor(ContextCompat.getColor(this, R.color.camera_toggle));
         btnRetry = findViewById(R.id.btnRetry);
         btnRetry.setOnClickListener(v -> {
-            client.unbind();
-            client.bind();
+            if (cameraOff) {
+                openDashcam();
+            } else {
+                client.rebind();
+            }
         });
+    }
+
+    /** Only Dashcam in the foreground can start its camera, so send the user there. */
+    private void openDashcam() {
+        Intent launch = getPackageManager()
+                .getLaunchIntentForPackage(DashcamClient.DASHCAM_PACKAGE);
+        if (launch != null) {
+            startActivity(launch);
+        }
+    }
+
+    /** Connection line and bottom button: link down, link up with no camera, or all good. */
+    private void showLink(boolean connected, boolean noCamera) {
+        cameraOff = connected && noCamera;
+        if (!connected) {
+            connection.setText(R.string.disconnected);
+        } else {
+            connection.setText(noCamera ? "Connected · camera off" : "Connected to Dashcam");
+        }
+        connection.setTextColor(ContextCompat.getColor(this,
+                !connected ? R.color.text_muted : noCamera ? R.color.accent : R.color.ok));
+        btnRetry.setEnabled(!connected || noCamera);
+        btnRetry.setText(!connected ? R.string.retry
+                : noCamera ? R.string.open_dashcam : R.string.connected);
     }
 
     private void applyScreenPadding(View root) {
@@ -91,14 +121,9 @@ public class MainActivity extends AppCompatActivity implements DashcamClient.Lis
 
     @Override
     public void onConnectionChanged(boolean connected) {
-        connection.setText(connected
-                ? "Connected to Dashcam"
-                : getString(R.string.disconnected));
-        connection.setTextColor(ContextCompat.getColor(
-                this, connected ? R.color.ok : R.color.text_muted));
+        // Camera state is unknown until Dashcam's first status arrives.
+        showLink(connected, false);
         setControlsEnabled(connected);
-        btnRetry.setEnabled(!connected);
-        btnRetry.setText(connected ? R.string.connected : R.string.retry);
         if (!connected) {
             // Last-known state is stale once the link drops; never keep showing Recording.
             status.setText(R.string.status);
@@ -124,6 +149,7 @@ public class MainActivity extends AppCompatActivity implements DashcamClient.Lis
             label = label + " · " + message;
         }
         status.setText(label);
+        showLink(true, noCamera);
         timer.setText(DashcamScreen.formatDuration(durationMs));
         btnLoop.setText(loopEnabled ? "Loop on" : "Loop off");
         btnCamera.setText(frontCamera ? R.string.camera_front : R.string.camera_rear);
