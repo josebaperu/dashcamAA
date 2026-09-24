@@ -1,7 +1,5 @@
 package com.aauto.dashcam.helper;
 
-import android.os.Handler;
-import android.os.Looper;
 import android.text.SpannableString;
 import android.text.Spanned;
 
@@ -19,8 +17,6 @@ import androidx.car.app.model.GridTemplate;
 import androidx.car.app.model.ItemList;
 import androidx.car.app.model.Template;
 import androidx.core.graphics.drawable.IconCompat;
-import androidx.lifecycle.DefaultLifecycleObserver;
-import androidx.lifecycle.LifecycleOwner;
 
 import com.aauto.dashcam.api.IDashcamControl;
 
@@ -34,22 +30,12 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
      * Same title connected or not: GridTemplate counts a grid item title change
      * as a new step against the host's 5-template quota, not a refresh.
      */
-    private static final String STATUS_TITLE = " ";
+    private static final String STATUS_TITLE = "\u00A0";
     private static final CarColor COLOR_ACTIVE = CarColor.RED;
     private static final CarColor COLOR_DISABLED =
             CarColor.createCustom(0xFF9AA3B2, 0xFF9AA3B2);
 
     private final DashcamClient client;
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable tick = new Runnable() {
-        @Override
-        public void run() {
-            if (connected) {
-                client.refreshFromService();
-            }
-            handler.postDelayed(this, 1000L);
-        }
-    };
     private int state = IDashcamControl.STATE_IDLE;
     private boolean loopEnabled;
     private boolean frontCamera;
@@ -65,18 +51,8 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     public DashcamScreen(@NonNull CarContext carContext, DashcamClient client) {
         super(carContext);
         this.client = client;
+        // No polling: Dashcam pushes every state/message change and each second of duration.
         this.client.addListener(this);
-        getLifecycle().addObserver(new DefaultLifecycleObserver() {
-            @Override
-            public void onStart(@NonNull LifecycleOwner owner) {
-                handler.post(tick);
-            }
-
-            @Override
-            public void onStop(@NonNull LifecycleOwner owner) {
-                handler.removeCallbacks(tick);
-            }
-        });
     }
 
     @NonNull
