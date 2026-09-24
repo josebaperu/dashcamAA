@@ -161,10 +161,19 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         return state == IDashcamControl.STATE_PAUSED ? R.drawable.ic_resume : R.drawable.ic_play;
     }
 
+    /** Connected and Dashcam has a camera bound, so recording commands can work. */
+    private boolean ready() {
+        return connected && state != IDashcamControl.STATE_NO_CAMERA;
+    }
+
+    private boolean idle() {
+        return state == IDashcamControl.STATE_IDLE || state == IDashcamControl.STATE_NO_CAMERA;
+    }
+
     private GridItem recordItem() {
-        boolean enabled = connected && state != IDashcamControl.STATE_RECORDING;
+        boolean enabled = ready() && state != IDashcamControl.STATE_RECORDING;
         CarColor color;
-        if (!connected) {
+        if (!ready()) {
             color = COLOR_DISABLED;
         } else if (state == IDashcamControl.STATE_RECORDING) {
             color = COLOR_ACTIVE;
@@ -181,9 +190,9 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private GridItem pauseItem() {
-        boolean enabled = connected && state == IDashcamControl.STATE_RECORDING;
+        boolean enabled = ready() && state == IDashcamControl.STATE_RECORDING;
         CarColor color;
-        if (!connected) {
+        if (!ready()) {
             color = COLOR_DISABLED;
         } else if (state == IDashcamControl.STATE_PAUSED) {
             color = COLOR_ACTIVE;
@@ -200,9 +209,9 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private GridItem stopItem() {
-        boolean enabled = connected && state != IDashcamControl.STATE_IDLE;
+        boolean enabled = ready() && state != IDashcamControl.STATE_IDLE;
         CarColor color;
-        if (!connected) {
+        if (!ready()) {
             color = COLOR_DISABLED;
         } else if (state == IDashcamControl.STATE_IDLE) {
             color = COLOR_ACTIVE;
@@ -220,7 +229,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
 
     /** Loop mode can only change while idle, not mid-recording or paused. */
     private GridItem loopItem() {
-        boolean enabled = connected && state == IDashcamControl.STATE_IDLE;
+        boolean enabled = connected && idle();
         return transportItem(
                 getCarContext().getString(R.string.loop),
                 loopEnabled ? "ON" : "OFF",
@@ -268,14 +277,16 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private GridItem statusItem() {
-        if (connected) {
+        if (ready()) {
             return new GridItem.Builder()
                     .setTitle(STATUS_TITLE)
                     .setText("\u00A0")
                     .setImage(carIcon(R.drawable.ic_blank), GridItem.IMAGE_TYPE_ICON)
                     .build();
         }
-        String label = getCarContext().getString(R.string.not_ready);
+        // Connected but no camera: only opening Dashcam on the phone fixes it, so no tap action.
+        String label = getCarContext().getString(
+                connected ? R.string.open_dashcam : R.string.not_ready);
         SpannableString red = new SpannableString(label);
         red.setSpan(
                 ForegroundCarColorSpan.create(COLOR_ACTIVE),
@@ -286,12 +297,14 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
                 IconCompat.createWithResource(getCarContext(), R.drawable.ic_status))
                 .setTint(COLOR_ACTIVE)
                 .build();
-        return new GridItem.Builder()
+        GridItem.Builder item = new GridItem.Builder()
                 .setTitle(STATUS_TITLE)
                 .setText(red)
-                .setImage(icon, GridItem.IMAGE_TYPE_ICON)
-                .setOnClickListener(client::rebind)
-                .build();
+                .setImage(icon, GridItem.IMAGE_TYPE_ICON);
+        if (!connected) {
+            item.setOnClickListener(client::rebind);
+        }
+        return item.build();
     }
 
     private GridItem gridItem(String title, String text, int iconRes, Runnable action) {

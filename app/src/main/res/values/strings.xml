@@ -15,4 +15,5 @@
     <string name="connected">Connected</string>
     <string name="car_title">Dashcam</string>
     <string name="not_ready">Not Ready</string>
+    <string name="open_dashcam">Open Dashcam</string>
 </resources>

@@ -117,8 +117,10 @@ public class MainActivity extends AppCompatActivity implements DashcamClient.Lis
         String label = switch (state) {
             case IDashcamControl.STATE_RECORDING -> "Recording";
             case IDashcamControl.STATE_PAUSED -> "Paused";
+            case IDashcamControl.STATE_NO_CAMERA -> "Camera off · open Dashcam";
             default -> "Idle";
         };
+        boolean noCamera = state == IDashcamControl.STATE_NO_CAMERA;
         if (message != null && !message.isEmpty()) {
             label = label + " · " + message;
         }
@@ -128,11 +130,11 @@ public class MainActivity extends AppCompatActivity implements DashcamClient.Lis
         btnCamera.setText(frontCamera ? R.string.camera_front : R.string.camera_rear);
         btnCamera.setTextColor(ContextCompat.getColor(this, R.color.camera_toggle));
         btnPlay.setText(state == IDashcamControl.STATE_PAUSED ? R.string.resume : R.string.play);
-        btnPlay.setEnabled(state != IDashcamControl.STATE_RECORDING);
+        btnPlay.setEnabled(state != IDashcamControl.STATE_RECORDING && !noCamera);
         btnPause.setEnabled(state == IDashcamControl.STATE_RECORDING);
         btnResume.setVisibility(android.view.View.GONE);
-        btnStop.setEnabled(state != IDashcamControl.STATE_IDLE);
-        btnLoop.setEnabled(state == IDashcamControl.STATE_IDLE);
+        btnStop.setEnabled(state != IDashcamControl.STATE_IDLE && !noCamera);
+        btnLoop.setEnabled(state == IDashcamControl.STATE_IDLE || noCamera);
     }
 
     private void setControlsEnabled(boolean connected) {
