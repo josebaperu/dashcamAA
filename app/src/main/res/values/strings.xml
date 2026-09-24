@@ -16,4 +16,6 @@
     <string name="car_title">Dashcam</string>
     <string name="not_ready">Not Ready</string>
     <string name="open_dashcam">Open Dashcam</string>
+    <string name="waiting_camera">Waiting for camera</string>
+    <string name="timer_zero">00:00</string>
 </resources>

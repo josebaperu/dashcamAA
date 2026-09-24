@@ -17,6 +17,8 @@ import androidx.car.app.model.GridTemplate;
 import androidx.car.app.model.ItemList;
 import androidx.car.app.model.Template;
 import androidx.core.graphics.drawable.IconCompat;
+import androidx.lifecycle.DefaultLifecycleObserver;
+import androidx.lifecycle.LifecycleOwner;
 
 import com.aauto.dashcam.api.IDashcamControl;
 
@@ -46,6 +48,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     private boolean renderedLoop;
     private boolean renderedFront;
     private boolean renderedConnected;
+    private String renderedMessage = "";
     private long renderedDurationBucket = Long.MIN_VALUE;
 
     public DashcamScreen(@NonNull CarContext carContext, DashcamClient client) {
@@ -53,8 +56,20 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         this.client = client;
         // No polling: Dashcam pushes every state/message change and each second of duration.
         this.client.addListener(this);
+        getLifecycle().addObserver(new DefaultLifecycleObserver() {
+            @Override
+            public void onStart(@NonNull LifecycleOwner owner) {
+                // Updates that arrived while hidden couldn't redraw (invalidate is a no-op when
+                // stopped), and the host isn't guaranteed to re-fetch on return. Titles don't
+                // change, so this is a refresh, not a template-quota step.
+                invalidate();
+            }
+        });
     }
 
+    // setTitle/setHeaderAction/setActionStrip are deprecated for setHeader, but setHeader
+    // needs Car API 7 and this app supports hosts down to API 1 (minCarApiLevel).
+    @SuppressWarnings("deprecation")
     @NonNull
     @Override
     public Template onGetTemplate() {
@@ -63,11 +78,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         items.addItem(pauseItem());
         items.addItem(stopItem());
         items.addItem(loopItem());
-        items.addItem(gridItem(
-                getCarContext().getString(R.string.camera),
-                frontCamera ? "FRONT" : "REAR",
-                R.drawable.ic_camera,
-                client::toggleCamera));
+        items.addItem(cameraItem());
         items.addItem(statusItem());
 
         return new GridTemplate.Builder()
@@ -111,7 +122,8 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         boolean stateChanged = connected != renderedConnected
                 || state != renderedState
                 || loopEnabled != renderedLoop
-                || frontCamera != renderedFront;
+                || frontCamera != renderedFront
+                || !message.equals(renderedMessage);
         boolean durationDue = bucket != renderedDurationBucket;
         if (!stateChanged && !durationDue) {
             return;
@@ -120,6 +132,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         renderedState = state;
         renderedLoop = loopEnabled;
         renderedFront = frontCamera;
+        renderedMessage = message;
         renderedDurationBucket = bucket;
         invalidate();
     }
@@ -144,6 +157,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         String clock = formatDuration(displayDurationMs());
         return switch (state) {
             case IDashcamControl.STATE_RECORDING -> "REC " + clock;
+            case IDashcamControl.STATE_WAITING_FOR_CAMERA -> "WAIT " + clock;
             case IDashcamControl.STATE_PAUSED -> "PAUSED " + clock;
             default -> clock;
         };
@@ -152,9 +166,16 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     private String playSubtitle() {
         return switch (state) {
             case IDashcamControl.STATE_RECORDING -> "REC";
+            case IDashcamControl.STATE_WAITING_FOR_CAMERA -> "wait";
             case IDashcamControl.STATE_PAUSED -> "resume";
             default -> "start";
         };
+    }
+
+    /** Recording was requested; frames may or may not be arriving. */
+    private boolean recording() {
+        return state == IDashcamControl.STATE_RECORDING
+                || state == IDashcamControl.STATE_WAITING_FOR_CAMERA;
     }
 
     private int playIcon() {
@@ -171,11 +192,11 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private GridItem recordItem() {
-        boolean enabled = ready() && state != IDashcamControl.STATE_RECORDING;
+        boolean enabled = ready() && !recording();
         CarColor color;
         if (!ready()) {
             color = COLOR_DISABLED;
-        } else if (state == IDashcamControl.STATE_RECORDING) {
+        } else if (recording()) {
             color = COLOR_ACTIVE;
         } else {
             color = null;
@@ -239,6 +260,18 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
                 client::toggleLoop);
     }
 
+    /** Disabled while paused: a switch restarts the clip, which would undo the pause. */
+    private GridItem cameraItem() {
+        boolean enabled = connected && state != IDashcamControl.STATE_PAUSED;
+        return transportItem(
+                getCarContext().getString(R.string.camera),
+                frontCamera ? "FRONT" : "REAR",
+                R.drawable.ic_camera,
+                enabled,
+                enabled ? null : COLOR_DISABLED,
+                client::toggleCamera);
+    }
+
     private GridItem transportItem(
             String title,
             String text,
@@ -277,16 +310,18 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
     }
 
     private GridItem statusItem() {
-        if (ready()) {
+        String label = alertText();
+        if (label == null) {
+            // Nothing wrong. When idle, show why Dashcam stopped ("Stopped", "Storage full"...).
+            String text = state == IDashcamControl.STATE_IDLE && !message.isEmpty()
+                    ? message
+                    : "\u00A0";
             return new GridItem.Builder()
                     .setTitle(STATUS_TITLE)
-                    .setText("\u00A0")
+                    .setText(text)
                     .setImage(carIcon(R.drawable.ic_blank), GridItem.IMAGE_TYPE_ICON)
                     .build();
         }
-        // Connected but no camera: only opening Dashcam on the phone fixes it, so no tap action.
-        String label = getCarContext().getString(
-                connected ? R.string.open_dashcam : R.string.not_ready);
         SpannableString red = new SpannableString(label);
         red.setSpan(
                 ForegroundCarColorSpan.create(COLOR_ACTIVE),
@@ -301,20 +336,26 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
                 .setTitle(STATUS_TITLE)
                 .setText(red)
                 .setImage(icon, GridItem.IMAGE_TYPE_ICON);
+        // Only a lost link can be retried from the car; the camera states need the phone.
         if (!connected) {
             item.setOnClickListener(client::rebind);
         }
         return item.build();
     }
 
-    private GridItem gridItem(String title, String text, int iconRes, Runnable action) {
-        return transportItem(
-                title,
-                text,
-                iconRes,
-                connected,
-                connected ? null : COLOR_DISABLED,
-                action);
+    /** Red status text when recording can't work right now, or null when all is well. */
+    @Nullable
+    private String alertText() {
+        if (!connected) {
+            return getCarContext().getString(R.string.not_ready);
+        }
+        if (state == IDashcamControl.STATE_NO_CAMERA) {
+            return getCarContext().getString(R.string.open_dashcam);
+        }
+        if (state == IDashcamControl.STATE_WAITING_FOR_CAMERA) {
+            return getCarContext().getString(R.string.waiting_camera);
+        }
+        return null;
     }
 
     static String formatDuration(long durationMs) {

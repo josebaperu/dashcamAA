@@ -35,6 +35,8 @@ public final class DashcamClient {
 
     private IDashcamControl control;
     private boolean bound;
+    /** Last loop value Dashcam pushed, or the one we just sent; toggleLoop flips this. */
+    private boolean lastLoopEnabled;
 
     private final IDashcamCallback callback = new IDashcamCallback.Stub() {
         @Override
@@ -44,6 +46,7 @@ public final class DashcamClient {
                     // Queued before the link dropped; don't resurrect stale state.
                     return;
                 }
+                lastLoopEnabled = loopEnabled;
                 for (Listener listener : listeners) {
                     listener.onStatus(state, loopEnabled, durationMs, message, frontCamera);
                 }
@@ -55,13 +58,9 @@ public final class DashcamClient {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             control = IDashcamControl.Stub.asInterface(service);
-            try {
-                control.registerCallback(callback);
-            } catch (RemoteException e) {
-                Log.w(TAG, "registerCallback failed", e);
-            }
             notifyConnection(true);
-            pullStatus();
+            // Registering makes Dashcam push one consistent snapshot, so no getter calls here.
+            requestStatus();
         }
 
         @Override
@@ -143,24 +142,19 @@ public final class DashcamClient {
         run(IDashcamControl::pause);
     }
 
-    public void resume() {
-        run(IDashcamControl::resumeRecording);
-    }
-
     public void stop() {
         run(IDashcamControl::stop);
     }
 
     public void toggleLoop() {
-        IDashcamControl c = control;
-        if (c == null) {
+        if (control == null) {
             return;
         }
-        try {
-            c.setLoopEnabled(!c.isLoopEnabled());
-        } catch (RemoteException e) {
-            Log.w(TAG, "toggleLoop failed", e);
-        }
+        // Flip our copy instead of reading it back: Dashcam applies setLoopEnabled later on its
+        // main thread, so a read right after a quick first tap would still see the old value.
+        lastLoopEnabled = !lastLoopEnabled;
+        boolean next = lastLoopEnabled;
+        run(c -> c.setLoopEnabled(next));
     }
 
     public void toggleCamera() {
@@ -168,26 +162,12 @@ public final class DashcamClient {
     }
 
     public void refreshFromService() {
-        pullStatus();
+        requestStatus();
     }
 
-    private void pullStatus() {
-        IDashcamControl c = control;
-        if (c == null) {
-            return;
-        }
-        try {
-            int state = c.getState();
-            boolean loop = c.isLoopEnabled();
-            boolean front = c.isFrontCamera();
-            long duration = c.getDurationMs();
-            String message = c.getStatusMessage();
-            for (Listener listener : listeners) {
-                listener.onStatus(state, loop, duration, message, front);
-            }
-        } catch (RemoteException e) {
-            Log.w(TAG, "pullStatus failed", e);
-        }
+    /** Asks Dashcam to push a fresh snapshot; registering again replaces the old registration. */
+    private void requestStatus() {
+        run(c -> c.registerCallback(callback));
     }
 
     private void run(RemoteAction action) {

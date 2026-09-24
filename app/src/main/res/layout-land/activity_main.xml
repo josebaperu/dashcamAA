@@ -4,7 +4,6 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg"
     android:clipToPadding="false"
     android:paddingStart="16dp"
     android:paddingTop="16dp"
@@ -61,7 +60,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:fontFamily="monospace"
-        android:text="00:00"
+        android:text="@string/timer_zero"
         android:textColor="@color/text_muted"
         android:textSize="24sp"
         app:layout_constraintEnd_toStartOf="@id/split"
@@ -107,15 +106,6 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="@id/split"
         app:layout_constraintTop_toBottomOf="@id/controls">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnResume"
-            style="@style/Widget.Material3.Button.TonalButton"
-            android:layout_width="0dp"
-            android:layout_height="52dp"
-            android:layout_margin="4dp"
-            android:layout_weight="1"
-            android:text="@string/resume" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStop"
