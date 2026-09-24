@@ -132,6 +132,7 @@ public class MainActivity extends AppCompatActivity implements DashcamClient.Lis
         btnPause.setEnabled(state == IDashcamControl.STATE_RECORDING);
         btnResume.setVisibility(android.view.View.GONE);
         btnStop.setEnabled(state != IDashcamControl.STATE_IDLE);
+        btnLoop.setEnabled(state == IDashcamControl.STATE_IDLE);
     }
 
     private void setControlsEnabled(boolean connected) {

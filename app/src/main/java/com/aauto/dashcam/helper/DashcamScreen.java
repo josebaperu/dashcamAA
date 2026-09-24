@@ -62,11 +62,7 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
         items.addItem(recordItem());
         items.addItem(pauseItem());
         items.addItem(stopItem());
-        items.addItem(gridItem(
-                getCarContext().getString(R.string.loop),
-                loopEnabled ? "ON" : "OFF",
-                R.drawable.ic_loop,
-                client::toggleLoop));
+        items.addItem(loopItem());
         items.addItem(gridItem(
                 getCarContext().getString(R.string.camera),
                 frontCamera ? "FRONT" : "REAR",
@@ -220,6 +216,18 @@ public class DashcamScreen extends Screen implements DashcamClient.Listener {
                 enabled,
                 color,
                 client::stop);
+    }
+
+    /** Loop mode can only change while idle, not mid-recording or paused. */
+    private GridItem loopItem() {
+        boolean enabled = connected && state == IDashcamControl.STATE_IDLE;
+        return transportItem(
+                getCarContext().getString(R.string.loop),
+                loopEnabled ? "ON" : "OFF",
+                R.drawable.ic_loop,
+                enabled,
+                enabled ? null : COLOR_DISABLED,
+                client::toggleLoop);
     }
 
     private GridItem transportItem(
